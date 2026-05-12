@@ -109,3 +109,12 @@ app.get('/api/data', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
+app.get('/api/data', async (req, res) => {
+  try {
+    const data = await database.getData(); // If this fails without a try/catch, it triggers a 500
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal Server Error'); // Manually handling it is better for debugging
+  }
+});
