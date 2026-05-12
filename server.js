@@ -1,48 +1,53 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const Note = require('./models/Note');
-const Chat = require('./models/Chat');
-const path = require('path');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const bodyParser = require('body-parser');
+const path = require('path');
 require('dotenv').config();
 
-// For Node.js versions below 18
-// npm install node-fetch
 const fetch = require('node-fetch');
+
+const Note = require('../models/Note');
+const Chat = require('../models/Chat');
 
 const app = express();
 
 
-// ======================
 // Middleware
-// ======================
-
 app.use(cors());
 app.use(bodyParser.json());
 
-app.use(express.static(path.join(__dirname, 'public')));
 
-
-// ======================
 // MongoDB Connection
-// ======================
+let isConnected = false;
 
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
+const connectDB = async () => {
+
+  if (isConnected) return;
+
+  try {
+
+    await mongoose.connect(process.env.MONGODB_URI);
+
+    isConnected = true;
+
     console.log('MongoDB Connected');
-  })
-  .catch((err) => {
-    console.error('MongoDB Connection Error:', err);
-  });
+
+  } catch (err) {
+
+    console.error('MongoDB Error:', err);
+  }
+};
+
+connectDB();
 
 
-// ======================
+// =======================
 // Notes Routes
-// ======================
+// =======================
 
-// GET ALL NOTES
 app.get('/api/notes', async (req, res) => {
+
   try {
 
     const notes = await Note.find().sort({ createdAt: -1 });
@@ -51,28 +56,20 @@ app.get('/api/notes', async (req, res) => {
 
   } catch (err) {
 
-    console.error('Fetch Notes Error:', err);
+    console.error(err);
 
     res.status(500).json({
-      success: false,
-      error: 'Failed to fetch notes',
-      details: err.message
+      error: err.message
     });
   }
 });
 
 
-// CREATE NOTE
 app.post('/api/notes', async (req, res) => {
+
   try {
 
     const { title, content } = req.body;
-
-    if (!title || !content) {
-      return res.status(400).json({
-        error: 'Title and content are required'
-      });
-    }
 
     const note = new Note({
       title,
@@ -85,18 +82,17 @@ app.post('/api/notes', async (req, res) => {
 
   } catch (err) {
 
-    console.error('Create Note Error:', err);
+    console.error(err);
 
     res.status(500).json({
-      error: 'Failed to create note',
-      details: err.message
+      error: err.message
     });
   }
 });
 
 
-// UPDATE NOTE
 app.put('/api/notes/:id', async (req, res) => {
+
   try {
 
     const updatedNote = await Note.findByIdAndUpdate(
@@ -105,75 +101,49 @@ app.put('/api/notes/:id', async (req, res) => {
       { new: true }
     );
 
-    if (!updatedNote) {
-      return res.status(404).json({
-        error: 'Note not found'
-      });
-    }
-
-    res.status(200).json(updatedNote);
+    res.json(updatedNote);
 
   } catch (err) {
 
-    console.error('Update Note Error:', err);
+    console.error(err);
 
     res.status(500).json({
-      error: 'Failed to update note',
-      details: err.message
+      error: err.message
     });
   }
 });
 
 
-// DELETE NOTE
 app.delete('/api/notes/:id', async (req, res) => {
+
   try {
 
-    const deletedNote = await Note.findByIdAndDelete(req.params.id);
+    await Note.findByIdAndDelete(req.params.id);
 
-    if (!deletedNote) {
-      return res.status(404).json({
-        error: 'Note not found'
-      });
-    }
-
-    res.status(200).json({
-      message: 'Note deleted successfully'
+    res.json({
+      message: 'Deleted'
     });
 
   } catch (err) {
 
-    console.error('Delete Note Error:', err);
+    console.error(err);
 
     res.status(500).json({
-      error: 'Failed to delete note',
-      details: err.message
+      error: err.message
     });
   }
 });
 
 
-// ======================
+// =======================
 // Chat Route
-// ======================
+// =======================
 
 app.post('/chat', async (req, res) => {
 
   try {
 
     const userMessage = req.body.message;
-
-    if (!userMessage) {
-      return res.status(400).json({
-        response: 'Message is required'
-      });
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        response: 'Missing Gemini API key'
-      });
-    }
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -200,18 +170,9 @@ app.post('/chat', async (req, res) => {
 
     const data = await response.json();
 
-    if (!response.ok) {
-
-      console.error('Gemini API Error:', data);
-
-      return res.status(500).json({
-        response: 'Error from AI model'
-      });
-    }
-
     const aiResponse =
       data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      'No response from AI';
+      'No response';
 
     const chat = new Chat({
       message: userMessage,
@@ -220,37 +181,20 @@ app.post('/chat', async (req, res) => {
 
     await chat.save();
 
-    res.status(200).json({
+    res.json({
       response: aiResponse
     });
 
   } catch (err) {
 
-    console.error('Chat Error:', err);
+    console.error(err);
 
     res.status(500).json({
-      response: 'Server error while processing request',
-      details: err.message
+      error: err.message
     });
   }
 });
 
 
-// ======================
-// Root Route
-// ======================
-
-app.get('/', (req, res) => {
-  res.send('Server is running...');
-});
-
-
-// ======================
-// Start Server
-// ======================
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// Export for Vercel
+module.exports = app;
